@@ -13,17 +13,33 @@ import (
 )
 
 func main() {
+	// Logger setup
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	})))
 
+	// Load environment variables
 	config.LoadEnv()
+
+	// Background cleanup task
 	go utils.PruneOldLimiters()
+
+	// Connect database
 	database.ConnectMongo()
 
+	// 🔥 IMPORTANT: Render PORT fix
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080" // local fallback
+	}
+
+	// Router
+	handler := routes.Router()
+
+	// Server config
 	srv := &http.Server{
-		Addr:              ":8080",
-		Handler:           routes.Router(),
+		Addr:              ":" + port,
+		Handler:           handler,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       120 * time.Second,
@@ -31,11 +47,13 @@ func main() {
 	}
 
 	slog.Info("server starting",
-		"addr", srv.Addr,
+		"port", port,
 		"frontend", config.FRONTEND_URL,
 		"admin", config.ADMIN_URL,
 	)
-	if err := srv.ListenAndServe(); err != nil {
+
+	// Start server
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		slog.Error("server error", "err", err)
 		os.Exit(1)
 	}
